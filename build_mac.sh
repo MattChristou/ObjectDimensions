@@ -41,7 +41,7 @@ done
 echo "== Linking"
 # shellcheck disable=SC2086
 clang $ARCHS $MIN -bundle -o "$BUNDLE/Contents/MacOS/$NAME" "$OBJ"/*.o \
-      -Wl,-exported_symbol,__mod_descrip
+      -Wl,-exported_symbol,__mod_descrip -Wl,-exported_symbol,_lwf_plugin_info
 
 sed "s/@VERSION@/$VERSION/g" mac/Info.plist.in > "$BUNDLE/Contents/Info.plist"
 
@@ -54,6 +54,8 @@ lipo -info "$BUNDLE/Contents/MacOS/$NAME"
 # The module descriptor must be the (only) exported symbol LightWave looks up.
 nm -gU "$BUNDLE/Contents/MacOS/$NAME" | grep -q " __mod_descrip$" \
     || { echo "ERROR: _mod_descrip is not exported"; exit 1; }
+nm -gU "$BUNDLE/Contents/MacOS/$NAME" | grep -q " _lwf_plugin_info$" \
+    || { echo "ERROR: lwf_plugin_info is not exported (lwf_version.h)"; exit 1; }
 nm -gU "$BUNDLE/Contents/MacOS/$NAME"
 codesign --verify --verbose "$BUNDLE"
 # Every symbol must resolve at load time (LightWave dlopens with RTLD_NOW),
@@ -68,6 +70,7 @@ int main(int argc, char **argv) {
     if (!h) { printf("dlopen FAILED: %s\n", dlerror()); return 1; }
     ModuleDescriptor *m = (ModuleDescriptor *)dlsym(h, "_mod_descrip");
     if (!m) { printf("no _mod_descrip\n"); return 1; }
+    if (!dlsym(h, "lwf_plugin_info")) { printf("no lwf_plugin_info\n"); return 1; }
     int n = 0;
     for (ServerRecord *r = m->serverDefs; r->className; ++r, ++n) {
         if (!r->name || !r->activate) { printf("bad server row %d\n", n); return 1; }

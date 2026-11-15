@@ -6,6 +6,9 @@
 - **macOS build.** `build_mac.sh` makes a universal (Apple Silicon + Intel)
   `ObjectDimensions.plugin`, ad-hoc signed, and checks that it loads and registers
   the node on both chip types. GitHub Actions builds Windows and macOS on every push.
+- **Plugin info record** (`lwf_plugin_info`, from `lwf_version.h`): id
+  `ObjectDimensions`, version 1.0.0, so the Plugin Updates checker can compare an
+  installed copy with the catalogue. CI checks the export on both platforms.
 
 ### Changed
 - LightWave 2025 SDK headers are vendored in `sdk/include`; the project uses them

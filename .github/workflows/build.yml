@@ -11,10 +11,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: microsoft/setup-msbuild@v2
+      # msbuild and dumpbin on PATH
+      - uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build plugin (Release x64)
         run: msbuild ObjectDimensions.vcxproj /m /nologo /v:minimal /p:Configuration=Release /p:Platform=x64 /p:SolutionDir=$env:GITHUB_WORKSPACE\
+
+      - name: Check exports (_mod_descrip, lwf_plugin_info)
+        shell: pwsh
+        run: |
+          $ex = dumpbin /exports bin/Release/ObjectDimensions.p | Out-String
+          foreach ($s in '_mod_descrip', 'lwf_plugin_info') {
+            if ($ex -notmatch [regex]::Escape($s)) { Write-Error "$s is not exported"; exit 1 }
+          }
+          Write-Host "exports ok"
 
       - uses: actions/upload-artifact@v4
         with:
