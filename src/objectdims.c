@@ -9,9 +9,13 @@
  *            or the Reference Object picked on the panel.
  *   outputs: Size, Center, Min, Max   (vectors, in the selected space)
  *            Top, Bottom, Left, Right, Front, Back  (face-centre positions)
- *            Center of Mass, Position in Box  (vectors)
- *            Diagonal, Box Volume, Mesh Volume, Surface Area,
+ *            Center of Mass, Position in Box, Sphere Center  (vectors)
+ *            Diagonal, Box Volume, Mesh Volume, Surface Area, Sphere Radius,
  *            Point Count, Polygon Count  (scalars)
+ *
+ * Registered for every node editor (NCON_ALL). Where there is no surface object
+ * (environment, camera, light graphs) set a Reference Object; with neither, the
+ * outputs are zero.
  *
  * The six side outputs are the centre point of each bounding-box face, following
  * LightWave's viewport axis convention: Top = +Y, Bottom = -Y, Right = +X,
@@ -20,7 +24,10 @@
  * Position in Box is where the point being shaded sits inside the measured box,
  * 0 to 1 per axis (0.5 on an axis where the box is flat), so a gradient wired to it
  * fits any object. Center of Mass is the volume centroid of a closed mesh (the box
- * centre when the mesh encloses no volume).
+ * centre when the mesh encloses no volume). Sphere Center / Sphere Radius give the
+ * smallest sphere about the object's own box centre that holds every vertex; in
+ * World Space the radius is scaled by the largest axis scale (exact for uniform
+ * scale, an upper bound for non-uniform).
  *
  * Space toggle:
  *   Object (local) - the object's modelled dimensions in object units.
@@ -92,6 +99,7 @@ typedef struct {
     double   vol;            /* mesh volume in object units^3 */
     double   area;           /* object-space surface area in object units^2 */
     double   com[3];         /* object-space centre of mass */
+    double   rad;            /* bounding sphere radius about the box centre */
     int      npnts, npols;   /* raw mesh point / polygon counts */
     double   M[4][4];        /* object -> world (LWIP_TRANSFORM) */
     double   Mi[4][4];       /* world -> object (LWIP_W_TRANSFORM) */
@@ -109,7 +117,7 @@ typedef struct st_ODData {
     NodeID        nodeID;
     NodeOutputID  out_size, out_center, out_min, out_max;
     NodeOutputID  out_top, out_bottom, out_left, out_right, out_front, out_back;
-    NodeOutputID  out_com, out_posbox;
+    NodeOutputID  out_com, out_posbox, out_sphc, out_sphr;
     NodeOutputID  out_diag, out_boxvol, out_meshvol;
     NodeOutputID  out_area, out_npnts, out_npols;
     int           world;      /* 0 = object/local space, 1 = world space */
@@ -253,7 +261,30 @@ static int od_polyScan(void *ud, LWPolID pol)
     return 0;
 }
 
-/* Measure one item in object space (box, volume, area, centre of mass, counts).
+/* second pass: farthest vertex from the box centre (the bounding sphere radius) */
+typedef struct {
+    LWMeshInfoID mesh;
+    double c[3];
+    double maxd2;
+} RadCtx;
+
+static int od_radScan(void *ud, LWPolID pol)
+{
+    RadCtx *r = (RadCtx *)ud;
+    int i, n = r->mesh->polSize(r->mesh, pol);
+    LWFVector fp;
+    for (i = 0; i < n; i++) {
+        double dx, dy, dz, d2;
+        r->mesh->pntOtherPos(r->mesh, r->mesh->polVertex(r->mesh, pol, i), fp);
+        dx = fp[0] - r->c[0]; dy = fp[1] - r->c[1]; dz = fp[2] - r->c[2];
+        d2 = dx*dx + dy*dy + dz*dz;
+        if (d2 > r->maxd2) r->maxd2 = d2;
+    }
+    return 0;
+}
+
+/* Measure one item in object space (box, volume, area, centre of mass, bounding
+   sphere, counts).
    Leaves e->M / e->Mi alone. Returns 1 on success. Needs meshInfo, so it only
    works single-threaded or outside surface shading. */
 static int od_scanItem(LWItemID item, VolEntry *e)
@@ -270,11 +301,22 @@ static int od_scanItem(LWItemID item, VolEntry *e)
     ctx.mesh = mesh;
     for (k = 0; k < 3; k++) { ctx.mn[k] = 1e30; ctx.mx[k] = -1e30; }
     mesh->scanPolys(mesh, (LWPolScanFunc *)od_polyScan, &ctx);
+    if (ctx.mx[0] < ctx.mn[0]) {            /* nothing scanned */
+        if (mesh->destroy) mesh->destroy(mesh);
+        return 0;
+    }
+    {
+        RadCtx r;
+        r.mesh = mesh;
+        for (k = 0; k < 3; k++) r.c[k] = 0.5 * (ctx.mn[k] + ctx.mx[k]);
+        r.maxd2 = 0.0;
+        mesh->scanPolys(mesh, (LWPolScanFunc *)od_radScan, &r);
+        e->rad = sqrt(r.maxd2);
+    }
     if (mesh->numPoints)   np = mesh->numPoints(mesh);
     if (mesh->numPolygons) ng = mesh->numPolygons(mesh);
     if (mesh->destroy) mesh->destroy(mesh);
 
-    if (ctx.mx[0] < ctx.mn[0]) return 0;   /* nothing scanned */
     e->item = item;
     for (k = 0; k < 3; k++) { e->mn[k] = ctx.mn[k]; e->mx[k] = ctx.mx[k]; }
     e->vol   = fabs(ctx.vol);
@@ -396,6 +438,8 @@ XCALL_(static LWInstance) ODCreate(void *priv, void *context, LWError *err)
     d->out_back    = od_out->create(d->nodeID, NOT_VECTOR, "Back");
     d->out_com     = od_out->create(d->nodeID, NOT_VECTOR, "Center of Mass");
     d->out_posbox  = od_out->create(d->nodeID, NOT_VECTOR, "Position in Box");
+    d->out_sphc    = od_out->create(d->nodeID, NOT_VECTOR, "Sphere Center");
+    d->out_sphr    = od_out->create(d->nodeID, NOT_SCALAR, "Sphere Radius");
     d->out_diag    = od_out->create(d->nodeID, NOT_SCALAR, "Diagonal");
     d->out_boxvol  = od_out->create(d->nodeID, NOT_SCALAR, "Box Volume");
     d->out_meshvol = od_out->create(d->nodeID, NOT_SCALAR, "Mesh Volume");
@@ -417,6 +461,7 @@ XCALL_(static LWError) ODCopy(LWInstance a, LWInstance b)
     da->out_left = keep.out_left; da->out_right = keep.out_right;
     da->out_front = keep.out_front; da->out_back = keep.out_back;
     da->out_com = keep.out_com;   da->out_posbox = keep.out_posbox;
+    da->out_sphc = keep.out_sphc; da->out_sphr = keep.out_sphr;
     da->out_diag = keep.out_diag; da->out_boxvol = keep.out_boxvol;
     da->out_meshvol = keep.out_meshvol;
     da->out_area = keep.out_area; da->out_npnts = keep.out_npnts;
@@ -475,8 +520,8 @@ static const VolEntry *od_measure(ODData *d, LWItemID item, LWTime t)
 XCALL_(static void) ODEvaluate(LWInstance inst, LWShadingGeometry *sg, NodeOutputID outID, NodeValue val)
 {
     ODData *d = (ODData *)inst;
-    double mn[3], mx[3], size[3], center[3], com[3], pos[3], pt[3];
-    double boxvol, meshvol, diag, area, npntsd, npolsd;
+    double mn[3], mx[3], size[3], center[3], com[3], pos[3], pt[3], sphc[3];
+    double boxvol, meshvol, diag, area, npntsd, npolsd, sphr = -1.0;
     const VolEntry *e;
     LWItemID target;
     LWTime t = od_now();
@@ -492,13 +537,24 @@ XCALL_(static void) ODEvaluate(LWInstance inst, LWShadingGeometry *sg, NodeOutpu
     e = od_measure(d, target, t);
 
     if (e) {
+        double lc[3];
+        for (k = 0; k < 3; k++) lc[k] = 0.5 * (e->mn[k] + e->mx[k]);
         if (d->world) {
+            double s = 0.0;
             od_worldBox(e->M, e->mn, e->mx, mn, mx);
             od_xform(e->M, e->com, com);
+            od_xform(e->M, lc, sphc);
             meshvol = e->vol * od_linearDet(e->M);
+            /* largest axis scale: exact for uniform scale, an upper bound otherwise */
+            for (k = 0; k < 3; k++)
+                s = fmax(s, sqrt(e->M[k][0]*e->M[k][0] + e->M[k][1]*e->M[k][1] + e->M[k][2]*e->M[k][2]));
+            sphr = e->rad * s;
         } else {
-            for (k = 0; k < 3; k++) { mn[k] = e->mn[k]; mx[k] = e->mx[k]; com[k] = e->com[k]; }
+            for (k = 0; k < 3; k++) {
+                mn[k] = e->mn[k]; mx[k] = e->mx[k]; com[k] = e->com[k]; sphc[k] = lc[k];
+            }
             meshvol = e->vol;
+            sphr = e->rad;
         }
         /* Surface Area is a modelled (object-space) property - it has no exact scalar
            factor under non-uniform scale/shear, so it is not transformed by the World
@@ -520,6 +576,10 @@ XCALL_(static void) ODEvaluate(LWInstance inst, LWShadingGeometry *sg, NodeOutpu
     }
     boxvol = size[0] * size[1] * size[2];
     diag   = sqrt(size[0]*size[0] + size[1]*size[1] + size[2]*size[2]);
+    if (sphr < 0.0) {           /* no mesh data: the sphere around the box */
+        for (k = 0; k < 3; k++) sphc[k] = center[k];
+        sphr = 0.5 * diag;
+    }
 
     if (outID == d->out_posbox) {
         /* the shaded point in the same space as the box: world (sg->P) for a world
@@ -547,6 +607,8 @@ XCALL_(static void) ODEvaluate(LWInstance inst, LWShadingGeometry *sg, NodeOutpu
     else if (outID == d->out_min)     od_out->setValue(val, mn);
     else if (outID == d->out_max)     od_out->setValue(val, mx);
     else if (outID == d->out_com)     od_out->setValue(val, com);
+    else if (outID == d->out_sphc)    od_out->setValue(val, sphc);
+    else if (outID == d->out_sphr)    od_out->setValue(val, &sphr);
     else if (outID == d->out_diag)    od_out->setValue(val, &diag);
     else if (outID == d->out_boxvol)  od_out->setValue(val, &boxvol);
     else if (outID == d->out_meshvol) od_out->setValue(val, &meshvol);

@@ -16,7 +16,7 @@ extern int ObjectDimsHandler(int, GlobalFunc *, void *, void *);
 extern int ObjectDimsInterface(int, GlobalFunc *, void *, void *);
 
 static ServerTagInfo ObjectDimsTags[] = {
-    { NCON_SURF, SRVTAG_NODECONTEXT },
+    { NCON_ALL, SRVTAG_NODECONTEXT },
     { "Tools", SRVTAG_NODEGROUP | LANGID_USENGLISH },
     { "Object Dimensions", SRVTAG_USERNAME | LANGID_USENGLISH },
     { NULL, 0 }

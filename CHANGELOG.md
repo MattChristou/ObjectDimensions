@@ -10,6 +10,14 @@
 - **`Center of Mass` output** (vector): the volume centroid of a closed mesh, from the
   same scan as Mesh Volume (signed sums, so either winding works). Falls back to the
   box centre when the mesh encloses no volume. Follows the World Space toggle.
+- **`Sphere Center` / `Sphere Radius` outputs**: the smallest sphere about the
+  object's own box centre that holds every vertex (a second pass over the mesh),
+  tighter than half the Diagonal. In World Space the centre is transformed and the
+  radius scaled by the largest axis scale (exact for uniform scale, an upper bound
+  otherwise).
+- **Every node editor**: registered with `NCON_ALL` instead of `NCON_SURF`, so it can
+  be used in displacement, light, camera, environment and other graphs. Where there
+  is no surface object, pick a Reference Object; with neither, outputs are zero.
 - **Reference Object** picker: measure a chosen object instead of the surface's own
   ("(Surface's Object)", the default). Saved by name; if the object is missing, the
   node measures its own object. In object space, Position in Box takes the shaded
