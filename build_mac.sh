@@ -11,7 +11,10 @@ set -eu
 cd "$(dirname "$0")"
 
 NAME=ObjectDimensions
-VERSION=1.0
+# Version from the plugin-info record in od_module.c; the bundle's version
+# strings take only its numeric part (macOS wants x.y.z there).
+VERSION=$(grep 'LWF_PLUGIN_INFO("ObjectDimensions"' src/od_module.c | cut -d'"' -f4)
+BUNDLE_VERSION=${VERSION%%-*}
 SERVERS=2           # the node's handler and interface
 OUT=build/mac
 OBJ="$OUT/obj"
@@ -43,7 +46,7 @@ echo "== Linking"
 clang $ARCHS $MIN -bundle -o "$BUNDLE/Contents/MacOS/$NAME" "$OBJ"/*.o \
       -Wl,-exported_symbol,__mod_descrip -Wl,-exported_symbol,_lwf_plugin_info
 
-sed "s/@VERSION@/$VERSION/g" mac/Info.plist.in > "$BUNDLE/Contents/Info.plist"
+sed "s/@VERSION@/$BUNDLE_VERSION/g" mac/Info.plist.in > "$BUNDLE/Contents/Info.plist"
 
 # Ad-hoc signature over the whole bundle (arm64 code must be signed to load;
 # a Developer ID signature + notarisation replaces this for distribution).

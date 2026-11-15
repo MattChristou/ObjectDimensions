@@ -39,4 +39,4 @@ ModuleDescriptor _mod_descrip = {
 };
 
 /* This .p's id and version, for the update checker (lwf_version.h). */
-LWF_PLUGIN_INFO("ObjectDimensions", "1.0.0");
+LWF_PLUGIN_INFO("ObjectDimensions", "1.0.0-beta.1");
