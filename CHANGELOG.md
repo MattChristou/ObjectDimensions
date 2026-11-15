@@ -22,6 +22,11 @@
   ("(Surface's Object)", the default). Saved by name; if the object is missing, the
   node measures its own object. In object space, Position in Box takes the shaded
   point into the reference's own space.
+- **Beta packaging**: `make_dist.ps1` builds Windows into `build\win\`, checks the
+  version (from the plugin-info record, now `1.0.0-beta.1`) in the docs and in both
+  the Windows and macOS binaries, and zips `dist\ObjectDimensions_<version>.zip`
+  (Windows `.p`, the CI-built macOS zip, `README.txt`, `RELEASE_NOTES.txt` from
+  `dist_src\`). The PDB is kept in `dist\symbols\<version>\`, not shipped.
 - **macOS build.** `build_mac.sh` makes a universal (Apple Silicon + Intel)
   `ObjectDimensions.plugin`, ad-hoc signed, and checks that it loads and registers
   the node on both chip types. GitHub Actions builds Windows and macOS on every push.

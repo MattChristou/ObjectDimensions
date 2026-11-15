@@ -1,0 +1,23 @@
+OBJECT DIMENSIONS 1.0.0-beta.1 - RELEASE NOTES
+==============================================
+
+First beta.
+
+What's in it
+------------
+- Object Dimensions node, available in every Node Editor (Add Node > Tools).
+- Bounding box outputs: Size, Center, Min, Max, Diagonal and the centre of each
+  side (Top, Bottom, Left, Right, Front, Back).
+- Position in Box: where the shaded point sits in the box, 0 to 1 per axis.
+- Volume and area: Box Volume, true Mesh Volume, Surface Area, Center of Mass.
+- Bounding sphere: Sphere Center and Sphere Radius.
+- Point Count and Polygon Count.
+- Reference Object: measure any object in the scene, not only the surface's
+  own.
+- World Space toggle: world footprint after move/rotate/scale, or the object's
+  own modelled size.
+- Windows and macOS (Apple Silicon and Intel) builds.
+
+Known limitations
+-----------------
+See README.txt.
