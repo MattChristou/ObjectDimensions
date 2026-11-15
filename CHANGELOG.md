@@ -3,12 +3,37 @@
 ## Unreleased
 
 ### Added
+- **`Position in Box` output** (vector): where the shaded point sits inside the
+  measured box, 0 to 1 per axis (0.5 on a flat axis), in the same space as the box.
+  Wire it into a gradient for a bottom-to-top fade or an edge falloff that fits any
+  object without retuning.
+- **`Center of Mass` output** (vector): the volume centroid of a closed mesh, from the
+  same scan as Mesh Volume (signed sums, so either winding works). Falls back to the
+  box centre when the mesh encloses no volume. Follows the World Space toggle.
+- **Reference Object** picker: measure a chosen object instead of the surface's own
+  ("(Surface's Object)", the default). Saved by name; if the object is missing, the
+  node measures its own object. In object space, Position in Box takes the shaded
+  point into the reference's own space.
 - **macOS build.** `build_mac.sh` makes a universal (Apple Silicon + Intel)
   `ObjectDimensions.plugin`, ad-hoc signed, and checks that it loads and registers
   the node on both chip types. GitHub Actions builds Windows and macOS on every push.
 - **Plugin info record** (`lwf_plugin_info`, from `lwf_version.h`): id
   `ObjectDimensions`, version 1.0.0, so the Plugin Updates checker can compare an
   installed copy with the catalogue. CI checks the export on both platforms.
+
+### Fixed (2026-11-15)
+- **World Space showed the object-space box.** `LWObjectInfo->bounds()` returns the
+  box in object space (confirmed in Layout 2026-10-31), not a world AABB as assumed,
+  so moving or rotating the object didn't change the World outputs. World values now
+  come from the item's `LWIP_TRANSFORM` (read single-threaded in the render setup):
+  the 8 local box corners transformed and re-boxed, and Mesh Volume scaled by its
+  |det|. `LWShadingGeometry.toWorld` is no longer used (it has no translation).
+- **Stale numbers after editing the mesh.** The per-node fallback scan (used when the
+  render-time cache is cold, e.g. in ProGeo graphs) was kept forever; it is now
+  dropped on render start, on each new frame and whenever the time changes.
+- **World Space control ID** moved from 0x8001 to 0x4F440001: IDs just above 0x8000
+  on node panels collide with Layout's own controls.
+- Header comment in `objectdims.c` brought up to date with the outputs.
 
 ### Changed
 - LightWave 2025 SDK headers are vendored in `sdk/include`; the project uses them
